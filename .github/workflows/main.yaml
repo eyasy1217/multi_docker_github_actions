@@ -1,0 +1,55 @@
+name: ci
+
+on:
+  push:
+    branches:
+    - 'main'
+    paths-ignore:
+    # 他のファイルも含めて変更があった場合はactionが動作してしまうので、
+    # 以下がdocker buildの対象にならないようにstepsでチェックする
+    - '.github/**'
+    - 'README.md'
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+    - name: checkout
+      uses: actions/checkout@v2
+    - id: file_changes
+      # changed filesをリスト化してくれるモジュール
+      uses: trilom/file-changes-action@v1.2.4
+      with:
+        # パイプ処理したいため、changed filesリストを改行区切りにする
+        output: '\n'
+    - name: docker_build
+      run: |
+        # 
+        # ${{ steps.file_changes.outputs.files }}
+        # ↓
+        # hello/Dockerfile
+        # hello/hello.sh
+        # world/world.sh
+        # .github/workflows/main.yaml
+        # ↓
+        # hello
+        # world
+        # .github
+        #
+        echo -e "${{ steps.file_changes.outputs.files }}" | \
+          awk '{sub("/.*", "");print $0;}' | \
+          sort | \
+          uniq | \
+        while read line
+        do
+          echo "##### docker build -> ${line} #####"
+          if [ ! -e ./${line}/Dockerfile ]; then
+            # .githubとREADME.mdはこのロジックに入る
+            echo "./${line}/Dockerfile not exists"
+            continue
+          fi
+
+          docker build -t ${line} ./${line}
+          # 確認のため
+          docker run --rm ${line}
+        done
